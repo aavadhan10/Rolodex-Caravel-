@@ -180,8 +180,8 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
     st.write(secondary_info.to_html(index=False), unsafe_allow_html=True)
 
 # Streamlit app layout
-st.title("Rolodex AI: Find Your Legal Match 👨‍⚖️ Utilizing Claude 3.5")
-st.write("Ask questions about the skill-matched lawyers for your specific legal needs:")
+st.title("Rolodex AI Caravel Law: Find Your Legal Match 👨‍⚖️ Utilizing Claude 3.5")
+st.write("Ask questions about the skill-matched lawyers for your specific legal needs and their availability:")
 
 default_questions = {
     "Which attorneys have the most experience with intellectual property?": "intellectual property",
@@ -211,17 +211,4 @@ if user_input:
         st.error("Failed to load data.")
     progress_bar.empty()
 
-# Feedback section
-st.write("### How accurate was this result?")
-accuracy_choice = st.radio("Please select one:", ["Accurate", "Not Accurate", "Type your own feedback"])
 
-if accuracy_choice == "Type your own feedback":
-    custom_feedback = st.text_input("Please provide your feedback:")
-else:
-    custom_feedback = accuracy_choice
-
-if st.button("Submit Feedback"):
-    if custom_feedback:
-        st.write(f"Thank you for your feedback: '{custom_feedback}'")
-    else:
-        st.error("Please provide feedback before submitting.")
