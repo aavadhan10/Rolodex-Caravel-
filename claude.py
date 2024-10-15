@@ -7,8 +7,9 @@ from sklearn.preprocessing import normalize
 from anthropic import Anthropic
 import re
 import unicodedata
-from nltk.corpus import wordnet
 import nltk
+from nltk.corpus import wordnet
+
 
 # Download required NLTK data
 nltk.download('wordnet', quiet=True)
