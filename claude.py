@@ -199,7 +199,7 @@ for question, _ in default_questions.items():
 if user_input:
     progress_bar = st.progress(0)
     progress_bar.progress(10)
-    matters_data = load_and_clean_data('Cleaned_Matters_Data.csv')
+    matters_data = load_and_clean_data('Cleaned_Matters_Caravel.csv')
     if not matters_data.empty:
         progress_bar.progress(50)
         matters_index, matters_vectorizer = create_weighted_vector_db(matters_data)
