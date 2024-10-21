@@ -9,6 +9,11 @@ import re
 import unicodedata
 import nltk
 from nltk.corpus import wordnet
+import datetime
+import os
+import csv
+from collections import Counter
+import base64
 
 # Download required NLTK data
 nltk.download('wordnet', quiet=True)
@@ -128,6 +133,38 @@ def normalize_query(query):
     query = re.sub(r'[^\w\s]', '', query)
     return query.lower()
 
+def log_query_and_result(query, result):
+    log_file = "query_log.csv"
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    file_exists = os.path.isfile(log_file)
+    
+    with open(log_file, "a", newline='') as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(["Timestamp", "Query", "Result"])
+        writer.writerow([timestamp, query, result])
+
+def get_most_asked_queries(n=10):
+    if not os.path.exists("query_log.csv"):
+        return pd.DataFrame(columns=["Query", "Count", "Last Result"])
+    
+    df = pd.read_csv("query_log.csv")
+    query_counts = Counter(df["Query"])
+    most_common = query_counts.most_common(n)
+    
+    results = []
+    for query, count in most_common:
+        last_result = df[df["Query"] == query].iloc[-1]["Result"]
+        results.append({"Query": query, "Count": count, "Last Result": last_result})
+    
+    return pd.DataFrame(results)
+
+def get_csv_download_link(df, filename="most_asked_queries.csv"):
+    csv = df.to_csv(index=False)
+    b64 = base64.b64encode(csv.encode()).decode()
+    href = f'<a href="data:file/csv;base64,{b64}" download="{filename}">Download CSV file</a>'
+    return href
+
 def query_claude_with_data(question, matters_data, matters_index, matters_vectorizer):
     # Normalize and expand the question
     normalized_question = normalize_query(question)
@@ -174,6 +211,9 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
     if not claude_response:
         return
 
+    # Log the query and result
+    log_query_and_result(question, claude_response)
+
     st.write("### Claude's Recommendation:")
     st.write(claude_response)
 
@@ -215,3 +255,11 @@ if user_input:
         st.error("Failed to load data.")
     progress_bar.empty()
 
+# Add a hidden section for downloading query data (you can access this by adding ?admin=true to the URL)
+if st.experimental_get_query_params().get("admin", [""])[0].lower() == "true":
+    st.write("---")
+    st.write("## Admin Section")
+    if st.button("Download Most Asked Queries and Results"):
+        df_most_asked = get_most_asked_queries()
+        st.write(df_most_asked)
+        st.markdown(get_csv_download_link(df_most_asked), unsafe_allow_html=True)
