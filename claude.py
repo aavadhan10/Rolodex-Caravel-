@@ -21,8 +21,14 @@ nltk.download('wordnet', quiet=True)
 nltk.download('averaged_perceptron_tagger', quiet=True)
 nltk.download('punkt', quiet=True)
 
-# Load the English NLP model
-nlp = spacy.load("en_core_web_sm")
+# Attempt to load the English NLP model
+try:
+    nlp = spacy.load("en_core_web_sm")
+except IOError:
+    st.error("The spaCy model 'en_core_web_sm' is not installed. Please run the following command to install it:")
+    st.code("python -m spacy download en_core_web_sm")
+    st.error("After installing the model, please restart the Streamlit app.")
+    st.stop()
 
 def init_anthropic_client():
     claude_api_key = st.secrets["CLAUDE_API_KEY"]
@@ -310,10 +316,10 @@ if user_input:
     progress_bar.empty()
 
 # Add a hidden section for downloading query data (you can access this by adding ?admin=true to the URL)
-if st.experimental_get_query_params().get("admin", [""])[0].lower() == "true":
-    st.write("---")
-    st.write("## Admin Section")
-    if st.button("Download Most Asked Queries and Results"):
-        df_most_asked = get_most_asked_queries()
-        st.write(df_most_asked)
-        st.markdown(get_csv_download_link(df_most_asked), unsafe_allow_html=True)
+#if st.experimental_get_query_params().get("admin", [""])[0].lower() == "true":
+#    st.write("---")
+#    st.write("## Admin Section")
+ #   if st.button("Download Most Asked Queries and Results"):
+    #    df_most_asked = get_most_asked_queries()
+     #   st.write(df_most_asked)
+     #   
