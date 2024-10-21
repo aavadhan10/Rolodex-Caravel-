@@ -14,11 +14,15 @@ import os
 import csv
 from collections import Counter
 import base64
+import spacy
 
 # Download required NLTK data
 nltk.download('wordnet', quiet=True)
 nltk.download('averaged_perceptron_tagger', quiet=True)
 nltk.download('punkt', quiet=True)
+
+# Load the English NLP model
+nlp = spacy.load("en_core_web_sm")
 
 def init_anthropic_client():
     claude_api_key = st.secrets["CLAUDE_API_KEY"]
@@ -165,15 +169,34 @@ def get_csv_download_link(df, filename="most_asked_queries.csv"):
     href = f'<a href="data:file/csv;base64,{b64}" download="{filename}">Download CSV file</a>'
     return href
 
+def preprocess_query(query):
+    # Process the query with spaCy
+    doc = nlp(query)
+    
+    # Extract nouns, proper nouns, and adjectives
+    keywords = [token.text for token in doc if token.pos_ in ['NOUN', 'PROPN', 'ADJ']]
+    
+    # Remove common words that might interfere with the search
+    stop_words = ['lawyer', 'best', 'top', 'find', 'me', 'give', 'who']
+    keywords = [word for word in keywords if word.lower() not in stop_words]
+    
+    return ' '.join(keywords)
+
 def keyword_search(data, query):
-    # Convert query to lowercase for case-insensitive matching
-    query_lower = query.lower()
+    # Preprocess the query
+    processed_query = preprocess_query(query)
+    query_terms = processed_query.lower().split()
     
     # Define the columns to search in
     search_columns = ['Area of Practise + Add Info', 'Industry Experience', 'Expert']
     
+    # Function to check if all query terms are in a text
+    def contains_all_terms(text):
+        text_lower = text.lower()
+        return all(term in text_lower for term in query_terms)
+    
     # Create a mask for each search column
-    masks = [data[col].str.lower().str.contains(query_lower, na=False) for col in search_columns]
+    masks = [data[col].apply(contains_all_terms) for col in search_columns]
     
     # Combine all masks with OR operation
     final_mask = masks[0]
@@ -184,18 +207,17 @@ def keyword_search(data, query):
     return data[final_mask]
 
 def query_claude_with_data(question, matters_data, matters_index, matters_vectorizer):
-    # Normalize and expand the question
-    normalized_question = normalize_query(question)
-    expanded_question = expand_query(normalized_question)
+    # Preprocess the question
+    processed_question = preprocess_query(question)
     
     # First, try keyword search
-    keyword_results = keyword_search(matters_data, normalized_question)
+    keyword_results = keyword_search(matters_data, processed_question)
     
     if not keyword_results.empty:
         relevant_data = keyword_results
     else:
         # If keyword search yields no results, fall back to semantic search
-        question_vec = matters_vectorizer.transform([expanded_question])
+        question_vec = matters_vectorizer.transform([processed_question])
         D, I = matters_index.search(normalize(question_vec).toarray(), k=10)
         relevant_data = matters_data.iloc[I[0]]
         
@@ -230,8 +252,8 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
     secondary_context = secondary_info.to_string(index=False)
 
     messages = [
-        {"role": "system", "content": "You are an expert legal consultant tasked with recommending the most suitable lawyers based on the given information. Analyze the primary information about the lawyers and consider the secondary information about their areas of practice to refine your recommendation. Only recommend lawyers who have relevant experience for the query."},
-        {"role": "user", "content": f"Question: {question}\n\nTop Lawyers Information:\n{primary_context}\n\nRelevant Areas of Practice:\n{secondary_context}\n\nBased on all this information, provide your final recommendation for the most suitable lawyer(s) and explain your reasoning in detail. Recommend up to 3 lawyers, discussing their relevant experience and areas of expertise that specifically relate to the query. If fewer than 3 lawyers are relevant, only recommend those who are truly suitable. Do not include any lawyers who don't have relevant experience for the query. If no lawyers have relevant experience, state that no suitable lawyers were found for this specific query."}
+        {"role": "system", "content": "You are an expert legal consultant tasked with recommending the most suitable lawyers based on the given information. Analyze the primary information about the lawyers and consider the secondary information about their areas of practice to refine your recommendation. Focus on the core legal expertise required, regardless of how the query is phrased."},
+        {"role": "user", "content": f"Core query: {processed_question}\nOriginal question: {question}\n\nTop Lawyers Information:\n{primary_context}\n\nRelevant Areas of Practice:\n{secondary_context}\n\nBased on all this information, provide your final recommendation for the most suitable lawyer(s) and explain your reasoning in detail. Recommend up to 3 lawyers, discussing their relevant experience and areas of expertise that specifically relate to the core query. If fewer than 3 lawyers are relevant, only recommend those who are truly suitable. Do not include any lawyers who don't have relevant experience for the query. If no lawyers have relevant experience, state that no suitable lawyers were found for this specific query."}
     ]
 
     claude_response = call_claude(messages)
