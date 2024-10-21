@@ -165,45 +165,73 @@ def get_csv_download_link(df, filename="most_asked_queries.csv"):
     href = f'<a href="data:file/csv;base64,{b64}" download="{filename}">Download CSV file</a>'
     return href
 
+def keyword_search(data, query):
+    # Convert query to lowercase for case-insensitive matching
+    query_lower = query.lower()
+    
+    # Define the columns to search in
+    search_columns = ['Area of Practise + Add Info', 'Industry Experience', 'Expert']
+    
+    # Create a mask for each search column
+    masks = [data[col].str.lower().str.contains(query_lower, na=False) for col in search_columns]
+    
+    # Combine all masks with OR operation
+    final_mask = masks[0]
+    for mask in masks[1:]:
+        final_mask |= mask
+    
+    # Return the filtered dataframe
+    return data[final_mask]
+
 def query_claude_with_data(question, matters_data, matters_index, matters_vectorizer):
     # Normalize and expand the question
     normalized_question = normalize_query(question)
     expanded_question = expand_query(normalized_question)
     
-    question_vec = matters_vectorizer.transform([expanded_question])
-    D, I = matters_index.search(normalize(question_vec).toarray(), k=10)  # Increased k to 10 for a larger initial pool
-
-    relevant_data = matters_data.iloc[I[0]]
-
-    # Calculate relevance scores
-    relevance_scores = 1 / (1 + D[0])
-    relevant_data['relevance_score'] = relevance_scores
-
-    # Sort by relevance score
-    relevant_data = relevant_data.sort_values('relevance_score', ascending=False)
-
-    # Filter lawyers based on relevance score threshold
-    threshold = 0.5 * relevant_data['relevance_score'].max()  # Adjust this threshold as needed
-    relevant_data = relevant_data[relevant_data['relevance_score'] >= threshold]
+    # First, try keyword search
+    keyword_results = keyword_search(matters_data, normalized_question)
+    
+    if not keyword_results.empty:
+        relevant_data = keyword_results
+    else:
+        # If keyword search yields no results, fall back to semantic search
+        question_vec = matters_vectorizer.transform([expanded_question])
+        D, I = matters_index.search(normalize(question_vec).toarray(), k=10)
+        relevant_data = matters_data.iloc[I[0]]
+        
+        # Calculate relevance scores
+        relevance_scores = 1 / (1 + D[0])
+        relevant_data['relevance_score'] = relevance_scores
+        
+        # Sort by relevance score
+        relevant_data = relevant_data.sort_values('relevance_score', ascending=False)
+        
+        # Filter lawyers based on relevance score threshold
+        threshold = 0.5 * relevant_data['relevance_score'].max()
+        relevant_data = relevant_data[relevant_data['relevance_score'] >= threshold]
 
     # Get unique lawyers
     unique_lawyers = relevant_data[['First Name', 'Last Name']].agg(' '.join, axis=1).unique()
 
-    # Get top 3 unique lawyers (or fewer if not enough meet the threshold)
+    # Get top 3 unique lawyers (or fewer if not enough meet the criteria)
     top_lawyers = unique_lawyers[:min(3, len(unique_lawyers))]
 
-    # Get all matters for top lawyers, sorted by relevance
-    top_relevant_data = relevant_data[relevant_data[['First Name', 'Last Name']].agg(' '.join, axis=1).isin(top_lawyers)].sort_values('relevance_score', ascending=False)
+    # Get all matters for top lawyers, sorted by relevance if available
+    top_relevant_data = relevant_data[relevant_data[['First Name', 'Last Name']].agg(' '.join, axis=1).isin(top_lawyers)]
+    if 'relevance_score' in top_relevant_data.columns:
+        top_relevant_data = top_relevant_data.sort_values('relevance_score', ascending=False)
 
     primary_info = top_relevant_data[['First Name', 'Last Name', 'Level/Title', 'Call', 'Jurisdiction', 'Location', 'Area of Practise + Add Info', 'Industry Experience', 'Education']].drop_duplicates(subset=['First Name', 'Last Name'])
-    secondary_info = top_relevant_data[['First Name', 'Last Name', 'Area of Practise + Add Info', 'Industry Experience', 'relevance_score']]
+    secondary_info = top_relevant_data[['First Name', 'Last Name', 'Area of Practise + Add Info', 'Industry Experience']]
+    if 'relevance_score' in secondary_info.columns:
+        secondary_info = secondary_info[['First Name', 'Last Name', 'Area of Practise + Add Info', 'Industry Experience', 'relevance_score']]
 
     primary_context = primary_info.to_string(index=False)
     secondary_context = secondary_info.to_string(index=False)
 
     messages = [
-        {"role": "system", "content": "You are an expert legal consultant tasked with recommending the most suitable lawyers based on the given information. Analyze the primary information about the lawyers and consider the secondary information about their areas of practice to refine your recommendation. Pay attention to the relevance scores provided. Only recommend lawyers who have relevant experience for the query."},
-        {"role": "user", "content": f"Question: {question}\n\nTop Lawyers Information:\n{primary_context}\n\nRelevant Areas of Practice (including relevance scores):\n{secondary_context}\n\nBased on all this information, provide your final recommendation for the most suitable lawyer(s) and explain your reasoning in detail. Consider the relevance scores when making your recommendation. Recommend up to 3 lawyers, discussing their relevant experience and areas of expertise that specifically relate to the query. If fewer than 3 lawyers are relevant, only recommend those who are truly suitable. Do not include any lawyers who don't have relevant experience for the query. If no lawyers have relevant experience, state that no suitable lawyers were found for this specific query."}
+        {"role": "system", "content": "You are an expert legal consultant tasked with recommending the most suitable lawyers based on the given information. Analyze the primary information about the lawyers and consider the secondary information about their areas of practice to refine your recommendation. Only recommend lawyers who have relevant experience for the query."},
+        {"role": "user", "content": f"Question: {question}\n\nTop Lawyers Information:\n{primary_context}\n\nRelevant Areas of Practice:\n{secondary_context}\n\nBased on all this information, provide your final recommendation for the most suitable lawyer(s) and explain your reasoning in detail. Recommend up to 3 lawyers, discussing their relevant experience and areas of expertise that specifically relate to the query. If fewer than 3 lawyers are relevant, only recommend those who are truly suitable. Do not include any lawyers who don't have relevant experience for the query. If no lawyers have relevant experience, state that no suitable lawyers were found for this specific query."}
     ]
 
     claude_response = call_claude(messages)
