@@ -174,29 +174,25 @@ def preprocess_query(query):
     doc = nlp(query)
     
     # Extract nouns, proper nouns, and adjectives
-    keywords = [token.text for token in doc if token.pos_ in ['NOUN', 'PROPN', 'ADJ']]
+    keywords = [token.lemma_.lower() for token in doc if token.pos_ in ['NOUN', 'PROPN', 'ADJ']]
     
     # Remove common words that might interfere with the search
     stop_words = ['lawyer', 'best', 'top', 'find', 'me', 'give', 'who']
-    keywords = [word for word in keywords if word.lower() not in stop_words]
+    keywords = [word for word in keywords if word not in stop_words]
     
-    return ' '.join(keywords)
+    return keywords
 
-def keyword_search(data, query):
-    # Preprocess the query
-    processed_query = preprocess_query(query)
-    query_terms = processed_query.lower().split()
-    
+def keyword_search(data, query_keywords):
     # Define the columns to search in
     search_columns = ['Area of Practise + Add Info', 'Industry Experience', 'Expert']
     
-    # Function to check if all query terms are in a text
-    def contains_all_terms(text):
+    # Function to check if any query term is in a text
+    def contains_any_term(text):
         text_lower = text.lower()
-        return all(term in text_lower for term in query_terms)
+        return any(term in text_lower for term in query_keywords)
     
     # Create a mask for each search column
-    masks = [data[col].apply(contains_all_terms) for col in search_columns]
+    masks = [data[col].apply(contains_any_term) for col in search_columns]
     
     # Combine all masks with OR operation
     final_mask = masks[0]
@@ -206,54 +202,60 @@ def keyword_search(data, query):
     # Return the filtered dataframe
     return data[final_mask]
 
+def calculate_relevance_score(lawyer_text, query_keywords):
+    lawyer_text_lower = lawyer_text.lower()
+    keyword_count = sum(lawyer_text_lower.count(keyword) for keyword in query_keywords)
+    return keyword_count
+
 def query_claude_with_data(question, matters_data, matters_index, matters_vectorizer):
     # Preprocess the question
-    processed_question = preprocess_query(question)
+    query_keywords = preprocess_query(question)
     
-    # First, try keyword search
-    keyword_results = keyword_search(matters_data, processed_question)
+    # Perform keyword search
+    keyword_results = keyword_search(matters_data, query_keywords)
     
+    # If keyword search yields results, use them. Otherwise, use all data.
     if not keyword_results.empty:
         relevant_data = keyword_results
     else:
-        # If keyword search yields no results, fall back to semantic search
-        question_vec = matters_vectorizer.transform([processed_question])
-        D, I = matters_index.search(normalize(question_vec).toarray(), k=10)
-        relevant_data = matters_data.iloc[I[0]]
-        
-        # Calculate relevance scores
-        relevance_scores = 1 / (1 + D[0])
-        relevant_data['relevance_score'] = relevance_scores
-        
-        # Sort by relevance score
-        relevant_data = relevant_data.sort_values('relevance_score', ascending=False)
-        
-        # Filter lawyers based on relevance score threshold
-        threshold = 0.5 * relevant_data['relevance_score'].max()
-        relevant_data = relevant_data[relevant_data['relevance_score'] >= threshold]
+        relevant_data = matters_data
 
-    # Get unique lawyers
-    unique_lawyers = relevant_data[['First Name', 'Last Name']].agg(' '.join, axis=1).unique()
+    # Calculate keyword-based relevance scores
+    relevant_data['keyword_score'] = relevant_data.apply(
+        lambda row: calculate_relevance_score(' '.join(row.astype(str)), query_keywords), axis=1
+    )
 
-    # Get top 3 unique lawyers (or fewer if not enough meet the criteria)
-    top_lawyers = unique_lawyers[:min(3, len(unique_lawyers))]
+    # Perform semantic search
+    question_vec = matters_vectorizer.transform([' '.join(query_keywords)])
+    D, I = matters_index.search(normalize(question_vec).toarray(), k=len(relevant_data))
+    
+    # Add semantic relevance scores
+    semantic_scores = 1 / (1 + D[0])
+    relevant_data['semantic_score'] = 0
+    relevant_data.iloc[I[0], relevant_data.columns.get_loc('semantic_score')] = semantic_scores
 
-    # Get all matters for top lawyers, sorted by relevance if available
-    top_relevant_data = relevant_data[relevant_data[['First Name', 'Last Name']].agg(' '.join, axis=1).isin(top_lawyers)]
-    if 'relevance_score' in top_relevant_data.columns:
-        top_relevant_data = top_relevant_data.sort_values('relevance_score', ascending=False)
+    # Calculate final relevance score (you can adjust the weights)
+    relevant_data['relevance_score'] = (relevant_data['keyword_score'] * 0.7) + (relevant_data['semantic_score'] * 0.3)
+
+    # Sort by relevance score
+    relevant_data = relevant_data.sort_values('relevance_score', ascending=False)
+
+    # Get top 10 unique lawyers
+    top_lawyers = relevant_data[['First Name', 'Last Name']].drop_duplicates().head(10)
+
+    # Get all matters for top lawyers, sorted by relevance
+    top_relevant_data = relevant_data[relevant_data[['First Name', 'Last Name']].apply(tuple, axis=1).isin(top_lawyers.apply(tuple, axis=1))]
+    top_relevant_data = top_relevant_data.sort_values('relevance_score', ascending=False)
 
     primary_info = top_relevant_data[['First Name', 'Last Name', 'Level/Title', 'Call', 'Jurisdiction', 'Location', 'Area of Practise + Add Info', 'Industry Experience', 'Education']].drop_duplicates(subset=['First Name', 'Last Name'])
-    secondary_info = top_relevant_data[['First Name', 'Last Name', 'Area of Practise + Add Info', 'Industry Experience']]
-    if 'relevance_score' in secondary_info.columns:
-        secondary_info = secondary_info[['First Name', 'Last Name', 'Area of Practise + Add Info', 'Industry Experience', 'relevance_score']]
+    secondary_info = top_relevant_data[['First Name', 'Last Name', 'Area of Practise + Add Info', 'Industry Experience', 'relevance_score']]
 
     primary_context = primary_info.to_string(index=False)
     secondary_context = secondary_info.to_string(index=False)
 
     messages = [
         {"role": "system", "content": "You are an expert legal consultant tasked with recommending the most suitable lawyers based on the given information. Analyze the primary information about the lawyers and consider the secondary information about their areas of practice to refine your recommendation. Focus on the core legal expertise required, regardless of how the query is phrased."},
-        {"role": "user", "content": f"Core query: {processed_question}\nOriginal question: {question}\n\nTop Lawyers Information:\n{primary_context}\n\nRelevant Areas of Practice:\n{secondary_context}\n\nBased on all this information, provide your final recommendation for the most suitable lawyer(s) and explain your reasoning in detail. Recommend up to 3 lawyers, discussing their relevant experience and areas of expertise that specifically relate to the core query. If fewer than 3 lawyers are relevant, only recommend those who are truly suitable. Do not include any lawyers who don't have relevant experience for the query. If no lawyers have relevant experience, state that no suitable lawyers were found for this specific query."}
+        {"role": "user", "content": f"Core query keywords: {', '.join(query_keywords)}\nOriginal question: {question}\n\nTop Lawyers Information:\n{primary_context}\n\nRelevant Areas of Practice (including relevance scores):\n{secondary_context}\n\nBased on all this information, provide your final recommendation for the most suitable lawyer(s) and explain your reasoning in detail. Recommend up to 3 lawyers, discussing their relevant experience and areas of expertise that specifically relate to the core query. If fewer than 3 lawyers are relevant, only recommend those who are truly suitable. Ensure you consider all provided lawyers, especially those with high relevance scores or whose expertise directly matches the query keywords. If no lawyers have relevant experience, state that no suitable lawyers were found for this specific query."}
     ]
 
     claude_response = call_claude(messages)
