@@ -10,7 +10,6 @@ import unicodedata
 import nltk
 from nltk.corpus import wordnet
 
-
 # Download required NLTK data
 nltk.download('wordnet', quiet=True)
 nltk.download('averaged_perceptron_tagger', quiet=True)
@@ -60,19 +59,24 @@ def load_and_clean_data(file_path, encoding='utf-8'):
 
 @st.cache_resource
 def create_weighted_vector_db(data):
-    weights = {
-        'Attorney': 2.0,
-        'Role Detail': 2.0,
-        'Practice Group': 1.5,
-        'Summary': 1.5,
-        'Area of Expertise': 1.5,
-        'Matter Description': 1.0
-    }
-
     def weighted_text(row):
         return ' '.join([
-            ' '.join([str(row[col])] * int(weight * 10))
-            for col, weight in weights.items() if col in row.index
+            str(row['First Name']),
+            str(row['Last Name']),
+            str(row['Level/Title']),
+            str(row['Call']),
+            str(row['Jurisdiction']),
+            str(row['Location']),
+            str(row['Area of Practise + Add Info']),
+            str(row['Industry Experience']),
+            str(row['Languages']),
+            str(row['Previous In-House Companies']),
+            str(row['Previous Companies/Firms']),
+            str(row['Education']),
+            str(row['Awards/Recognition']),
+            str(row['City of Residence']),
+            str(row['Notable Items/Personal Details']),
+            str(row['Expert'])
         ])
 
     combined_text = data.apply(weighted_text, axis=1)
@@ -130,7 +134,7 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
     expanded_question = expand_query(normalized_question)
     
     question_vec = matters_vectorizer.transform([expanded_question])
-    D, I = matters_index.search(normalize(question_vec).toarray(), k=5)  # Increased k to 30
+    D, I = matters_index.search(normalize(question_vec).toarray(), k=5)  # Increased k to 5
 
     relevant_data = matters_data.iloc[I[0]]
 
@@ -142,28 +146,28 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
     relevant_data = relevant_data.sort_values('relevance_score', ascending=False)
 
     # Get unique lawyers
-    unique_lawyers = relevant_data['Attorney'].unique()
+    unique_lawyers = relevant_data[['First Name', 'Last Name']].agg(' '.join, axis=1).unique()
 
     # Ensure we have at least 3 unique lawyers (if available)
     if len(unique_lawyers) < 3:
-        additional_lawyers = matters_data[~matters_data['Attorney'].isin(unique_lawyers)].sample(min(3 - len(unique_lawyers), len(matters_data) - len(unique_lawyers)))
+        additional_lawyers = matters_data[~matters_data[['First Name', 'Last Name']].agg(' '.join, axis=1).isin(unique_lawyers)].sample(min(3 - len(unique_lawyers), len(matters_data) - len(unique_lawyers)))
         relevant_data = pd.concat([relevant_data, additional_lawyers])
 
     # Get top 3 unique lawyers
-    top_lawyers = relevant_data['Attorney'].unique()[:3]
+    top_lawyers = relevant_data[['First Name', 'Last Name']].agg(' '.join, axis=1).unique()[:3]
 
     # Get all matters for top 3 lawyers, sorted by relevance
-    top_relevant_data = relevant_data[relevant_data['Attorney'].isin(top_lawyers)].sort_values('relevance_score', ascending=False)
+    top_relevant_data = relevant_data[relevant_data[['First Name', 'Last Name']].agg(' '.join, axis=1).isin(top_lawyers)].sort_values('relevance_score', ascending=False)
 
-    primary_info = top_relevant_data[['Attorney', 'Work Email', 'Role Detail', 'Practice Group', 'Summary', 'Area of Expertise']].drop_duplicates(subset=['Attorney'])
-    secondary_info = top_relevant_data[['Attorney', 'Matter Description', 'relevance_score']]
+    primary_info = top_relevant_data[['First Name', 'Last Name', 'Level/Title', 'Call', 'Jurisdiction', 'Location', 'Area of Practise + Add Info', 'Industry Experience', 'Education']].drop_duplicates(subset=['First Name', 'Last Name'])
+    secondary_info = top_relevant_data[['First Name', 'Last Name', 'Area of Practise + Add Info', 'Industry Experience', 'relevance_score']]
 
     primary_context = primary_info.to_string(index=False)
     secondary_context = secondary_info.to_string(index=False)
 
     messages = [
-        {"role": "system", "content": "You are an expert legal consultant tasked with recommending the best lawyers based on the given information. Analyze the primary information about the lawyers and consider the secondary information about their matters to refine your recommendation. Pay attention to the relevance scores provided."},
-        {"role": "user", "content": f"Question: {question}\n\nTop Lawyers Information:\n{primary_context}\n\nRelated Matters (including relevance scores):\n{secondary_context}\n\nBased on all this information, provide your final recommendation for the most suitable lawyer(s) and explain your reasoning in detail. Consider the relevance scores when making your recommendation. Recommend up to 3 lawyers, discussing their relevant experience and matters they've worked on. If fewer than 3 lawyers are relevant, only recommend those who are truly suitable."}
+        {"role": "system", "content": "You are an expert legal consultant tasked with recommending the best lawyers based on the given information. Analyze the primary information about the lawyers and consider the secondary information about their areas of practice to refine your recommendation. Pay attention to the relevance scores provided."},
+        {"role": "user", "content": f"Question: {question}\n\nTop Lawyers Information:\n{primary_context}\n\nRelevant Areas of Practice (including relevance scores):\n{secondary_context}\n\nBased on all this information, provide your final recommendation for the most suitable lawyer(s) and explain your reasoning in detail. Consider the relevance scores when making your recommendation. Recommend up to 3 lawyers, discussing their relevant experience and areas of expertise. If fewer than 3 lawyers are relevant, only recommend those who are truly suitable."}
     ]
 
     claude_response = call_claude(messages)
@@ -176,7 +180,7 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
     st.write("### Top Recommended Lawyer(s) Information:")
     st.write(primary_info.to_html(index=False), unsafe_allow_html=True)
 
-    st.write("### Related Matters of Recommended Lawyer(s):")
+    st.write("### Relevant Areas of Practice of Recommended Lawyer(s):")
     st.write(secondary_info.to_html(index=False), unsafe_allow_html=True)
 
 # Streamlit app layout
@@ -184,9 +188,9 @@ st.title("Rolodex AI Caravel Law: Find Your Legal Match 👨‍⚖️ Utilizing 
 st.write("Ask questions about the skill-matched lawyers for your specific legal needs and their availability:")
 
 default_questions = {
-    "Which attorneys have the most experience with intellectual property?": "intellectual property",
+    "Which lawyers have the most experience with intellectual property?": "intellectual property",
     "Can you recommend a lawyer specializing in employment law?": "employment law",
-    "Who are the best litigators for financial cases?": "financial law",
+    "Who are the best lawyers for financial cases?": "financial law",
     "Which lawyer should I contact for real estate matters?": "real estate"
 }
 
@@ -200,7 +204,7 @@ for question, _ in default_questions.items():
 if user_input:
     progress_bar = st.progress(0)
     progress_bar.progress(10)
-    matters_data = load_and_clean_data('Cleaned_Matters_Caravel.csv')
+    matters_data = load_and_clean_data('BD_Caravel.csv')
     if not matters_data.empty:
         progress_bar.progress(50)
         matters_index, matters_vectorizer = create_weighted_vector_db(matters_data)
@@ -210,5 +214,4 @@ if user_input:
     else:
         st.error("Failed to load data.")
     progress_bar.empty()
-
 
