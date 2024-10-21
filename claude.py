@@ -187,6 +187,8 @@ def keyword_search(data, query_keywords):
     
     # Function to check if any query term is in a text
     def contains_any_term(text):
+        if not isinstance(text, str):
+            return False
         text_lower = text.lower()
         return any(term in text_lower for term in query_keywords)
     
@@ -202,10 +204,12 @@ def keyword_search(data, query_keywords):
     return data[final_mask]
 
 def calculate_relevance_score(lawyer_text, query_keywords):
+    if not isinstance(lawyer_text, str):
+        return 0
     lawyer_text_lower = lawyer_text.lower()
     keyword_count = sum(lawyer_text_lower.count(keyword) for keyword in query_keywords)
     return keyword_count
-
+    
 def query_claude_with_data(question, matters_data, matters_index, matters_vectorizer):
     # Preprocess the question
     query_keywords = preprocess_query(question)
