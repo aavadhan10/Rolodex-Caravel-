@@ -9,26 +9,18 @@ import re
 import unicodedata
 import nltk
 from nltk.corpus import wordnet
+from nltk.tokenize import word_tokenize
+from nltk.tag import pos_tag
 import datetime
 import os
 import csv
 from collections import Counter
 import base64
-import spacy
 
 # Download required NLTK data
 nltk.download('wordnet', quiet=True)
 nltk.download('averaged_perceptron_tagger', quiet=True)
 nltk.download('punkt', quiet=True)
-
-# Attempt to load the English NLP model
-try:
-    nlp = spacy.load("en_core_web_sm")
-except IOError:
-    st.error("The spaCy model 'en_core_web_sm' is not installed. Please run the following command to install it:")
-    st.code("python -m spacy download en_core_web_sm")
-    st.error("After installing the model, please restart the Streamlit app.")
-    st.stop()
 
 def init_anthropic_client():
     claude_api_key = st.secrets["CLAUDE_API_KEY"]
@@ -176,11 +168,12 @@ def get_csv_download_link(df, filename="most_asked_queries.csv"):
     return href
 
 def preprocess_query(query):
-    # Process the query with spaCy
-    doc = nlp(query)
+    # Tokenize and perform POS tagging
+    tokens = word_tokenize(query)
+    tagged = pos_tag(tokens)
     
     # Extract nouns, proper nouns, and adjectives
-    keywords = [token.lemma_.lower() for token in doc if token.pos_ in ['NOUN', 'PROPN', 'ADJ']]
+    keywords = [word.lower() for word, pos in tagged if pos in ['NN', 'NNS', 'NNP', 'NNPS', 'JJ', 'JJR', 'JJS']]
     
     # Remove common words that might interfere with the search
     stop_words = ['lawyer', 'best', 'top', 'find', 'me', 'give', 'who']
@@ -316,10 +309,10 @@ if user_input:
     progress_bar.empty()
 
 # Add a hidden section for downloading query data (you can access this by adding ?admin=true to the URL)
-#if st.experimental_get_query_params().get("admin", [""])[0].lower() == "true":
-#    st.write("---")
-#    st.write("## Admin Section")
- #   if st.button("Download Most Asked Queries and Results"):
-    #    df_most_asked = get_most_asked_queries()
-     #   st.write(df_most_asked)
-     #   
+if st.experimental_get_query_params().get("admin", [""])[0].lower() == "true":
+    st.write("---")
+    st.write("## Admin Section")
+    if st.button("Download Most Asked Queries and Results"):
+        df_most_asked = get_most_asked_queries()
+        st.write(df_most_asked)
+        st.markdown(get_csv_download_link(df_most_asked), unsafe_allow_html=True)
