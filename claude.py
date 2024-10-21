@@ -171,7 +171,7 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
     expanded_question = expand_query(normalized_question)
     
     question_vec = matters_vectorizer.transform([expanded_question])
-    D, I = matters_index.search(normalize(question_vec).toarray(), k=5)  # Increased k to 5
+    D, I = matters_index.search(normalize(question_vec).toarray(), k=10)  # Increased k to 10 for a larger initial pool
 
     relevant_data = matters_data.iloc[I[0]]
 
@@ -182,18 +182,17 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
     # Sort by relevance score
     relevant_data = relevant_data.sort_values('relevance_score', ascending=False)
 
+    # Filter lawyers based on relevance score threshold
+    threshold = 0.5 * relevant_data['relevance_score'].max()  # Adjust this threshold as needed
+    relevant_data = relevant_data[relevant_data['relevance_score'] >= threshold]
+
     # Get unique lawyers
     unique_lawyers = relevant_data[['First Name', 'Last Name']].agg(' '.join, axis=1).unique()
 
-    # Ensure we have at least 3 unique lawyers (if available)
-    if len(unique_lawyers) < 3:
-        additional_lawyers = matters_data[~matters_data[['First Name', 'Last Name']].agg(' '.join, axis=1).isin(unique_lawyers)].sample(min(3 - len(unique_lawyers), len(matters_data) - len(unique_lawyers)))
-        relevant_data = pd.concat([relevant_data, additional_lawyers])
+    # Get top 3 unique lawyers (or fewer if not enough meet the threshold)
+    top_lawyers = unique_lawyers[:min(3, len(unique_lawyers))]
 
-    # Get top 3 unique lawyers
-    top_lawyers = relevant_data[['First Name', 'Last Name']].agg(' '.join, axis=1).unique()[:3]
-
-    # Get all matters for top 3 lawyers, sorted by relevance
+    # Get all matters for top lawyers, sorted by relevance
     top_relevant_data = relevant_data[relevant_data[['First Name', 'Last Name']].agg(' '.join, axis=1).isin(top_lawyers)].sort_values('relevance_score', ascending=False)
 
     primary_info = top_relevant_data[['First Name', 'Last Name', 'Level/Title', 'Call', 'Jurisdiction', 'Location', 'Area of Practise + Add Info', 'Industry Experience', 'Education']].drop_duplicates(subset=['First Name', 'Last Name'])
@@ -203,8 +202,8 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
     secondary_context = secondary_info.to_string(index=False)
 
     messages = [
-        {"role": "system", "content": "You are an expert legal consultant tasked with recommending the best lawyers based on the given information. Analyze the primary information about the lawyers and consider the secondary information about their areas of practice to refine your recommendation. Pay attention to the relevance scores provided."},
-        {"role": "user", "content": f"Question: {question}\n\nTop Lawyers Information:\n{primary_context}\n\nRelevant Areas of Practice (including relevance scores):\n{secondary_context}\n\nBased on all this information, provide your final recommendation for the most suitable lawyer(s) and explain your reasoning in detail. Consider the relevance scores when making your recommendation. Recommend up to 3 lawyers, discussing their relevant experience and areas of expertise. If fewer than 3 lawyers are relevant, only recommend those who are truly suitable."}
+        {"role": "system", "content": "You are an expert legal consultant tasked with recommending the most suitable lawyers based on the given information. Analyze the primary information about the lawyers and consider the secondary information about their areas of practice to refine your recommendation. Pay attention to the relevance scores provided. Only recommend lawyers who have relevant experience for the query."},
+        {"role": "user", "content": f"Question: {question}\n\nTop Lawyers Information:\n{primary_context}\n\nRelevant Areas of Practice (including relevance scores):\n{secondary_context}\n\nBased on all this information, provide your final recommendation for the most suitable lawyer(s) and explain your reasoning in detail. Consider the relevance scores when making your recommendation. Recommend up to 3 lawyers, discussing their relevant experience and areas of expertise that specifically relate to the query. If fewer than 3 lawyers are relevant, only recommend those who are truly suitable. Do not include any lawyers who don't have relevant experience for the query. If no lawyers have relevant experience, state that no suitable lawyers were found for this specific query."}
     ]
 
     claude_response = call_claude(messages)
@@ -217,11 +216,14 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
     st.write("### Claude's Recommendation:")
     st.write(claude_response)
 
-    st.write("### Top Recommended Lawyer(s) Information:")
-    st.write(primary_info.to_html(index=False), unsafe_allow_html=True)
+    if not primary_info.empty:
+        st.write("### Top Recommended Lawyer(s) Information:")
+        st.write(primary_info.to_html(index=False), unsafe_allow_html=True)
 
-    st.write("### Relevant Areas of Practice of Recommended Lawyer(s):")
-    st.write(secondary_info.to_html(index=False), unsafe_allow_html=True)
+        st.write("### Relevant Areas of Practice of Recommended Lawyer(s):")
+        st.write(secondary_info.to_html(index=False), unsafe_allow_html=True)
+    else:
+        st.write("No lawyers with relevant experience were found for this query.")
 
 # Streamlit app layout
 st.title("Rolodex AI Caravel Law: Find Your Legal Match 👨‍⚖️ Utilizing Claude 3.5")
