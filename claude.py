@@ -414,16 +414,16 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
     # Log the query and result
     log_query_and_result(question, claude_response)
 
-         # Display section - Only showing availability for Claude's recommended lawyers
+      # Display section - Only showing recommendations
     st.write("### Claude's Recommendation:")
     st.write(claude_response)
 
     if not primary_info.empty:
-        # Extract names from Claude's response using regex
+        # Extract names of recommended lawyers from Claude's response
         response_text = claude_response.lower()
         recommended_lawyers = []
         
-        # Iterate through all lawyers and check if they're mentioned in Claude's response
+        # Create a list of all possible lawyer names from primary_info
         for _, lawyer in primary_info.iterrows():
             full_name = f"{lawyer['First Name']} {lawyer['Last Name']}"
             if full_name.lower() in response_text:
@@ -459,12 +459,17 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
                             st.write("**Availability Notes:**")
                             st.write(notes)
 
-        st.write("### Alternative Lawyers Recommended:")
-        st.write(primary_info.to_html(index=False), unsafe_allow_html=True)
+            # Only show these specific lawyers in the alternative section
+            recommended_df = primary_info[
+                primary_info.apply(lambda x: f"{x['First Name']} {x['Last Name']}" in 
+                                 [f"{lawyer['First Name']} {lawyer['Last Name']}" for lawyer in recommended_lawyers], axis=1)
+            ]
+            
+            st.write("### Alternative Lawyers Recommended:")
+            st.write(recommended_df.to_html(index=False), unsafe_allow_html=True)
 
     else:
         st.write("No lawyers with relevant experience were found for this query.")
-
 # Streamlit app layout
 st.title("Rolodex AI Caravel Law: Find Your Legal Match 👨‍⚖️ Utilizing Claude 3.5")
 st.write("Ask questions about the skill-matched lawyers for your specific legal needs and their availability:")
