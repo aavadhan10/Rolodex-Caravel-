@@ -465,7 +465,7 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
                                  [f"{lawyer['First Name']} {lawyer['Last Name']}" for lawyer in recommended_lawyers], axis=1)
             ]
             
-            st.write("### Alternative Lawyers Recommended:")
+            st.write("###  Lawyers Recommended Information:")
             st.write(recommended_df.to_html(index=False), unsafe_allow_html=True)
 
     else:
