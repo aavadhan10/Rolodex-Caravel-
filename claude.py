@@ -481,7 +481,7 @@ st.title("Rolodex AI Caravel Law: Find Your Legal Match 👨‍⚖️ Utilizing 
 st.write("Ask questions about the skill-matched lawyers for your specific legal needs and their availability:")
 
 # Add tabs for different views
-tab1, tab2 = st.tabs(["Search Lawyers", "View Available Lawyers Week (Updated 10/23/24)"])
+tab1, tab2 = st.tabs(["Search Lawyers by Skillset", "View Available Lawyers Week (Updated 10/23/24)"])
 
 with tab1:
     default_questions = {
