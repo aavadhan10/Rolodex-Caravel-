@@ -414,6 +414,7 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
     # Log the query and result
     log_query_and_result(question, claude_response)
 
+     # NEW DISPLAY SECTION STARTS HERE
     st.write("### Claude's Recommendation:")
     st.write(claude_response)
 
@@ -421,10 +422,36 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
         st.write("### Top Recommended Lawyer(s) Information:")
         st.write(primary_info.to_html(index=False), unsafe_allow_html=True)
 
-        st.write("### Relevant Areas of Practice and Availability of Recommended Lawyer(s):")
-        st.write(secondary_info.to_html(index=False), unsafe_allow_html=True)
-    else:
-        st.write("No lawyers with relevant experience were found for this query.")
+        st.write("### Availability Details for Recommended Lawyer(s):")
+        availability_data = load_availability_data('Caravel Law Availability - October 18th, 2024.csv')
+        
+        for _, lawyer in primary_info.iterrows():
+            lawyer_availability = availability_data[
+                (availability_data['First Name'] == lawyer['First Name']) & 
+                (availability_data['Last Name'] == lawyer['Last Name'])
+            ]
+            
+            if not lawyer_availability.empty:
+                name = f"{lawyer['First Name']} {lawyer['Last Name']}"
+                with st.expander(f"🧑‍⚖️ {name} - {'Ready for New Work' if lawyer_availability['Do you have capacity to take on new work?'].iloc[0] == 'Yes' else 'Limited Availability'}"):
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.write("**Availability Details:**")
+                        st.write(f"• Days per week: {lawyer_availability['What is your capacity to take on new work for the forseeable future? Days per week'].iloc[0]}")
+                        st.write(f"• Hours per month: {lawyer_availability['What is your capacity to take on new work for the foreseeable future? Hours per month'].iloc[0]}")
+                        st.write(f"• Preferred engagement types: {lawyer_availability['What type of engagement would you like to consider?'].iloc[0]}")
+                    
+                    with col2:
+                        st.write("**Practice Areas:**")
+                        st.write(lawyer['Area of Practise + Add Info'])
+                    
+                    notes = lawyer_availability['Do you have any comments or instructions you should let us know about that may impact your short/long-term availability? For instance, are you going on vacation (please provide exact dates)?'].iloc[0]
+                    if pd.notna(notes) and notes.lower() not in ['no', 'n/a', 'none', 'nil']:
+                        st.write("**Availability Notes:**")
+                        st.write(notes)
+                    else:
+                        st.write("No lawyers with relevant experience were found for this query.")
 
 # Streamlit app layout
 st.title("Rolodex AI Caravel Law: Find Your Legal Match 👨‍⚖️ Utilizing Claude 3.5")
