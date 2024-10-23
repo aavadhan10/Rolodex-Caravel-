@@ -22,6 +22,63 @@ nltk.download('wordnet', quiet=True)
 nltk.download('averaged_perceptron_tagger', quiet=True)
 nltk.download('punkt', quiet=True)
 
+# ADD THE NEW LOGGING FUNCTIONS HERE, RIGHT AFTER IMPORTS:
+def log_query_and_result(query, result):
+    """Log queries and results to a CSV file"""
+    log_file = "query_log.csv"
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    try:
+        # Create the file with headers if it doesn't exist
+        if not os.path.exists(log_file):
+            with open(log_file, "w", newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(["Timestamp", "Query", "Result"])
+        
+        # Append the new query and result
+        with open(log_file, "a", newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow([timestamp, query, result])
+    except Exception as e:
+        st.warning(f"Unable to log query: {str(e)}")
+
+def get_most_asked_queries(n=10):
+    """Get the most frequently asked queries from the log"""
+    if not os.path.exists("query_log.csv"):
+        return pd.DataFrame(columns=["Query", "Count", "Last Result"])
+    
+    try:
+        df = pd.read_csv("query_log.csv")
+        query_counts = Counter(df["Query"])
+        most_common = query_counts.most_common(n)
+        
+        results = []
+        for query, count in most_common:
+            last_result = df[df["Query"] == query].iloc[-1]["Result"]
+            results.append({
+                "Query": query,
+                "Count": count,
+                "Last Result": last_result
+            })
+        
+        return pd.DataFrame(results)
+    except Exception as e:
+        st.warning(f"Error getting query statistics: {str(e)}")
+        return pd.DataFrame(columns=["Query", "Count", "Last Result"])
+
+def get_csv_download_link(df, filename="most_asked_queries.csv"):
+    """Create a download link for CSV data"""
+    try:
+        csv = df.to_csv(index=False)
+        b64 = base64.b64encode(csv.encode()).decode()
+        href = f'<a href="data:file/csv;base64,{b64}" download="{filename}">Download CSV file</a>'
+        return href
+    except Exception as e:
+        st.warning(f"Error creating download link: {str(e)}")
+        return ""
+
+
+
 def init_anthropic_client():
     claude_api_key = st.secrets["CLAUDE_API_KEY"]
     if not claude_api_key:
