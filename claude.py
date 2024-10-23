@@ -414,39 +414,50 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
     # Log the query and result
     log_query_and_result(question, claude_response)
 
-        # NEW DISPLAY SECTION - Modified order and titles
+         # Display section - Only showing availability for Claude's recommended lawyers
     st.write("### Claude's Recommendation:")
     st.write(claude_response)
 
     if not primary_info.empty:
-        st.write("### Availability Details for Recommended Lawyer(s):")
-        availability_data = load_availability_data('Caravel Law Availability - October 18th, 2024.csv')
+        # Extract names from Claude's response using regex
+        response_text = claude_response.lower()
+        recommended_lawyers = []
         
+        # Iterate through all lawyers and check if they're mentioned in Claude's response
         for _, lawyer in primary_info.iterrows():
-            lawyer_availability = availability_data[
-                (availability_data['First Name'] == lawyer['First Name']) & 
-                (availability_data['Last Name'] == lawyer['Last Name'])
-            ]
+            full_name = f"{lawyer['First Name']} {lawyer['Last Name']}"
+            if full_name.lower() in response_text:
+                recommended_lawyers.append(lawyer)
+
+        if recommended_lawyers:
+            st.write("### Availability Details for Recommended Lawyer(s):")
+            availability_data = load_availability_data('Caravel Law Availability - October 18th, 2024.csv')
             
-            if not lawyer_availability.empty:
-                name = f"{lawyer['First Name']} {lawyer['Last Name']}"
-                with st.expander(f"🧑‍⚖️ {name} - {'Ready for New Work' if lawyer_availability['Do you have capacity to take on new work?'].iloc[0] == 'Yes' else 'Limited Availability'}"):
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.write("**Availability Details:**")
-                        st.write(f"• Days per week: {lawyer_availability['What is your capacity to take on new work for the forseeable future? Days per week'].iloc[0]}")
-                        st.write(f"• Hours per month: {lawyer_availability['What is your capacity to take on new work for the foreseeable future? Hours per month'].iloc[0]}")
-                        st.write(f"• Preferred engagement types: {lawyer_availability['What type of engagement would you like to consider?'].iloc[0]}")
-                    
-                    with col2:
-                        st.write("**Practice Areas:**")
-                        st.write(lawyer['Area of Practise + Add Info'])
-                    
-                    notes = lawyer_availability['Do you have any comments or instructions you should let us know about that may impact your short/long-term availability? For instance, are you going on vacation (please provide exact dates)?'].iloc[0]
-                    if pd.notna(notes) and notes.lower() not in ['no', 'n/a', 'none', 'nil']:
-                        st.write("**Availability Notes:**")
-                        st.write(notes)
+            for lawyer in recommended_lawyers:
+                lawyer_availability = availability_data[
+                    (availability_data['First Name'] == lawyer['First Name']) & 
+                    (availability_data['Last Name'] == lawyer['Last Name'])
+                ]
+                
+                if not lawyer_availability.empty:
+                    name = f"{lawyer['First Name']} {lawyer['Last Name']}"
+                    with st.expander(f"🧑‍⚖️ {name} - {'Ready for New Work' if lawyer_availability['Do you have capacity to take on new work?'].iloc[0] == 'Yes' else 'Limited Availability'}"):
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.write("**Availability Details:**")
+                            st.write(f"• Days per week: {lawyer_availability['What is your capacity to take on new work for the forseeable future? Days per week'].iloc[0]}")
+                            st.write(f"• Hours per month: {lawyer_availability['What is your capacity to take on new work for the foreseeable future? Hours per month'].iloc[0]}")
+                            st.write(f"• Preferred engagement types: {lawyer_availability['What type of engagement would you like to consider?'].iloc[0]}")
+                        
+                        with col2:
+                            st.write("**Practice Areas:**")
+                            st.write(lawyer['Area of Practise + Add Info'])
+                        
+                        notes = lawyer_availability['Do you have any comments or instructions you should let us know about that may impact your short/long-term availability? For instance, are you going on vacation (please provide exact dates)?'].iloc[0]
+                        if pd.notna(notes) and notes.lower() not in ['no', 'n/a', 'none', 'nil']:
+                            st.write("**Availability Notes:**")
+                            st.write(notes)
 
         st.write("### Alternative Lawyers Recommended:")
         st.write(primary_info.to_html(index=False), unsafe_allow_html=True)
