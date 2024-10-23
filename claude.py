@@ -414,20 +414,27 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
     # Log the query and result
     log_query_and_result(question, claude_response)
 
-      # Display section - Only showing recommendations
+    # Display section - Only showing recommendations
     st.write("### Claude's Recommendation:")
     st.write(claude_response)
 
     if not primary_info.empty:
-        # Extract names of recommended lawyers from Claude's response
+        # Extract names of recommended lawyers from Claude's response in order
         response_text = claude_response.lower()
         recommended_lawyers = []
         
-        # Create a list of all possible lawyer names from primary_info
+        # Get all lawyers mentioned in Claude's response in the order they appear
         for _, lawyer in primary_info.iterrows():
             full_name = f"{lawyer['First Name']} {lawyer['Last Name']}"
             if full_name.lower() in response_text:
-                recommended_lawyers.append(lawyer)
+                # Find the position where this lawyer is first mentioned
+                position = response_text.find(full_name.lower())
+                recommended_lawyers.append((position, lawyer))
+        
+        # Sort lawyers by their position in Claude's response
+        recommended_lawyers.sort(key=lambda x: x[0])
+        # Extract just the lawyer info, now in correct order
+        recommended_lawyers = [lawyer for _, lawyer in recommended_lawyers]
 
         if recommended_lawyers:
             st.write("### Availability Details for Recommended Lawyer(s):")
@@ -459,13 +466,12 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
                             st.write("**Availability Notes:**")
                             st.write(notes)
 
-            # Only show these specific lawyers in the alternative section
-            recommended_df = primary_info[
-                primary_info.apply(lambda x: f"{x['First Name']} {x['Last Name']}" in 
-                                 [f"{lawyer['First Name']} {lawyer['Last Name']}" for lawyer in recommended_lawyers], axis=1)
-            ]
+            # Create ordered DataFrame based on Claude's recommendation order
+            recommended_df = pd.DataFrame([{
+                col: lawyer[col] for col in primary_info.columns
+            } for lawyer in recommended_lawyers])
             
-            st.write("###  Lawyers Recommended Information:")
+            st.write("### Recommended Lawyers Info:")
             st.write(recommended_df.to_html(index=False), unsafe_allow_html=True)
 
     else:
