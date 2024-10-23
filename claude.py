@@ -414,14 +414,11 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
     # Log the query and result
     log_query_and_result(question, claude_response)
 
-     # NEW DISPLAY SECTION STARTS HERE
+        # NEW DISPLAY SECTION - Modified order and titles
     st.write("### Claude's Recommendation:")
     st.write(claude_response)
 
     if not primary_info.empty:
-        st.write("### Top Recommended Lawyer(s) Information:")
-        st.write(primary_info.to_html(index=False), unsafe_allow_html=True)
-
         st.write("### Availability Details for Recommended Lawyer(s):")
         availability_data = load_availability_data('Caravel Law Availability - October 18th, 2024.csv')
         
@@ -450,8 +447,12 @@ def query_claude_with_data(question, matters_data, matters_index, matters_vector
                     if pd.notna(notes) and notes.lower() not in ['no', 'n/a', 'none', 'nil']:
                         st.write("**Availability Notes:**")
                         st.write(notes)
-                    else:
-                        st.write("No lawyers with relevant experience were found for this query.")
+
+        st.write("### Alternative Lawyers Recommended:")
+        st.write(primary_info.to_html(index=False), unsafe_allow_html=True)
+
+    else:
+        st.write("No lawyers with relevant experience were found for this query.")
 
 # Streamlit app layout
 st.title("Rolodex AI Caravel Law: Find Your Legal Match 👨‍⚖️ Utilizing Claude 3.5")
