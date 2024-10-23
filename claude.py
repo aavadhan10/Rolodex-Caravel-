@@ -58,11 +58,26 @@ def load_and_clean_data(file_path, encoding='utf-8'):
 
 def load_availability_data(file_path):
     availability_data = pd.read_csv(file_path)
+    # Clean up column names and handle any whitespace in names
     availability_data.columns = [col.strip() for col in availability_data.columns]
     availability_data['What is your name?'] = availability_data['What is your name?'].str.strip()
     
-    availability_data[['First Name', 'Last Name']] = availability_data['What is your name?'].str.split(expand=True)
+    # Split name into first and last name more safely
+    # First create empty columns
+    availability_data['First Name'] = ''
+    availability_data['Last Name'] = ''
     
+    # Then process each name individually
+    for idx, row in availability_data.iterrows():
+        name_parts = str(row['What is your name?']).split()
+        if len(name_parts) >= 2:
+            availability_data.at[idx, 'First Name'] = name_parts[0]
+            availability_data.at[idx, 'Last Name'] = ' '.join(name_parts[1:])
+        elif len(name_parts) == 1:
+            availability_data.at[idx, 'First Name'] = name_parts[0]
+            availability_data.at[idx, 'Last Name'] = ''
+    
+    # Clean up any remaining whitespace
     availability_data['First Name'] = availability_data['First Name'].str.strip()
     availability_data['Last Name'] = availability_data['Last Name'].str.strip()
     
