@@ -166,7 +166,23 @@ def get_availability_status(row, availability_data):
     days_per_week = str(days_per_week)
     hours_per_month = str(hours_per_month)
     
-    max_days = max([int(d.strip()) for d in days_per_week.split(';')] if ';' in days_per_week else [int(days_per_week.split()[0])])
+    # Extract just the number from the days string
+    try:
+        if ';' in days_per_week:
+            # Handle multiple values separated by semicolons
+            day_numbers = []
+            for day_str in days_per_week.split(';'):
+                # Extract first number from each part
+                number = ''.join(filter(str.isdigit, day_str.strip()))
+                if number:
+                    day_numbers.append(int(number))
+            max_days = max(day_numbers) if day_numbers else 0
+        else:
+            # Handle single value
+            number = ''.join(filter(str.isdigit, days_per_week))
+            max_days = int(number) if number else 0
+    except:
+        max_days = 0
     
     if max_days >= 4 and 'More than 80 hours' in hours_per_month:
         return "High Availability"
@@ -174,7 +190,7 @@ def get_availability_status(row, availability_data):
         return "Moderate Availability"
     else:
         return "Low Availability"
-
+        
 def display_available_lawyers():
     """Display all available lawyers and their capacity"""
     availability_data = load_availability_data('Caravel Law Availability - October 18th, 2024.csv')
